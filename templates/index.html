@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClearRecon Trustee Sales Scraper</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .form-container {
+            padding: 40px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 1.1em;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #3498db;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        .date-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.2em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(52, 152, 219, 0.3);
+        }
+
+        .submit-btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #3498db;
+            font-size: 1.1em;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .results {
+            display: none;
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #27ae60;
+        }
+
+        .results h3 {
+            color: #27ae60;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .listing-item {
+            background: white;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            border-left: 3px solid #3498db;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        .listing-item h4 {
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+
+        .listing-item p {
+            color: #7f8c8d;
+            line-height: 1.5;
+        }
+
+        .error {
+            background: #e74c3c;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .success {
+            background: #27ae60;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .info-box {
+            background: #ecf0f1;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 4px solid #f39c12;
+        }
+
+        .info-box h3 {
+            color: #e67e22;
+            margin-bottom: 10px;
+        }
+
+        .info-box p {
+            color: #7f8c8d;
+            line-height: 1.6;
+        }
+
+        @media (max-width: 768px) {
+            .date-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .form-container {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏠 ClearRecon Trustee Sales</h1>
+            <p>Search and export California foreclosure listings</p>
+        </div>
+
+        <div class="form-container">
+            <div class="info-box">
+                <h3>📋 How it works</h3>
+                <p>This tool will automatically search ClearRecon's California listings, filter by your criteria, and email you the results as a CSV file. The search mimics human browser behavior for reliable data extraction.</p>
+            </div>
+
+            <form id="searchForm">
+                <div class="form-group">
+                    <label for="email">📧 Email Address (Optional)</label>
+                    <input type="email" id="email" name="email" placeholder="Enter your email to receive results">
+                </div>
+
+                <div class="form-group">
+                    <label for="city">City:</label>
+                    <select id="city" name="city" required>
+                        <option value="">Loading cities...</option>
+                    </select>
+                </div>
+
+
+
+                <div class="date-row">
+                    <div class="form-group">
+                        <label for="start_date">📅 Start Date</label>
+                        <input type="date" id="start_date" name="start_date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="end_date">📅 End Date</label>
+                        <input type="date" id="end_date" name="end_date" required>
+                    </div>
+                </div>
+
+                <button type="submit" class="submit-btn" id="submitBtn">
+                    🔍 Search Trustee Sales
+                </button>
+            </form>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p id="loadingText">Initializing browser automation...</p>
+            </div>
+
+            <div class="error" id="error"></div>
+            <div class="success" id="success"></div>
+
+            <div class="results" id="results">
+                <h3>📊 Search Results</h3>
+                <div id="resultsContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Set default dates (next 30 days)
+        const today = new Date();
+        const endDate = new Date(today);
+        endDate.setDate(today.getDate() + 30);
+
+        // Format dates properly for HTML date inputs (YYYY-MM-DD)
+        const formatDate = (date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+
+        document.getElementById('start_date').value = formatDate(today);
+        document.getElementById('end_date').value = formatDate(endDate);
+
+        // Load cities on page load
+        loadCities();
+
+        async function loadCities() {
+            try {
+                const response = await fetch('/get_cities');
+                const cities = await response.json();
+                
+                const citySelect = document.getElementById('city');
+                citySelect.innerHTML = '<option value="">Select a city...</option>';
+                
+                cities.forEach(city => {
+                    const option = document.createElement('option');
+                    option.value = city;
+                    option.textContent = city;
+                    if (city === 'Sacramento') {
+                        option.selected = true;
+                    }
+                    citySelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading cities:', error);
+                const citySelect = document.getElementById('city');
+                citySelect.innerHTML = '<option value="Sacramento">Sacramento (default)</option>';
+            }
+        }
+
+        // Handle form submission
+        document.getElementById('searchForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const data = Object.fromEntries(formData.entries());
+            
+            // Show loading
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('success').style.display = 'none';
+            document.getElementById('submitBtn').disabled = true;
+            
+            const loadingMessages = [
+                'Initializing browser automation...',
+                'Navigating to ClearRecon website...',
+                'Accepting terms and conditions...',
+                'Loading property listings...',
+                'Setting filters to show all results...',
+                'Extracting property data...',
+                'Filtering by your criteria...',
+                'Generating CSV report...',
+                'Preparing email delivery...'
+            ];
+            
+            let messageIndex = 0;
+            const messageInterval = setInterval(() => {
+                if (messageIndex < loadingMessages.length) {
+                    document.getElementById('loadingText').textContent = loadingMessages[messageIndex];
+                    messageIndex++;
+                } else {
+                    messageIndex = 0;
+                }
+            }, 3000);
+            
+            try {
+                const response = await fetch('/search_sync', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                clearInterval(messageInterval);
+                
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+                
+                // Show results
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('results').style.display = 'block';
+                
+                const resultsContent = document.getElementById('resultsContent');
+                resultsContent.innerHTML = '';
+                
+                if (result.listings && result.listings.length > 0) {
+                    result.listings.forEach((listing, index) => {
+                        const listingDiv = document.createElement('div');
+                        listingDiv.className = 'listing-item';
+                        listingDiv.innerHTML = `
+                            <h4>Property ${index + 1}</h4>
+                            <p><strong>Address:</strong> ${listing.address || 'N/A'}</p>
+                            <p><strong>Sale Date:</strong> ${listing.sale_date || 'N/A'}</p>
+                            <p><strong>Amount:</strong> ${listing.amount || 'N/A'}</p>
+                            <p><strong>Details:</strong> ${listing.raw_text ? listing.raw_text.substring(0, 200) + '...' : 'N/A'}</p>
+                        `;
+                        resultsContent.appendChild(listingDiv);
+                    });
+                    
+                    document.getElementById('success').style.display = 'block';
+                    document.getElementById('success').textContent = 
+                        `✅ Found ${result.count} listings matching your criteria. ${data.email ? 'Results have been emailed to you.' : 'No email provided - results generated but not sent.'}`;
+                } else {
+                    resultsContent.innerHTML = '<p>No listings found matching your criteria.</p>';
+                }
+                
+            } catch (error) {
+                clearInterval(messageInterval);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error').textContent = `❌ Error: ${error.message}`;
+            } finally {
+                document.getElementById('submitBtn').disabled = false;
+            }
+        });
+
+        // Load counties when page loads
+        loadCounties();
+    </script>
+</body>
+</html>
