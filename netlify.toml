@@ -1,0 +1,11 @@
+[build]
+  command = "python -m playwright install && python app.py"
+  publish = "."
+
+[build.environment]
+  PYTHON_VERSION = "3.10"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -1,12 +1,6 @@
 from flask import Flask, render_template, request, jsonify, send_file
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait, Select
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.action_chains import ActionChains
-from webdriver_manager.chrome import ChromeDriverManager
+import asyncio
+from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -24,145 +18,93 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+# Ensure downloads directory exists for CSV exports
+DOWNLOADS_DIR = os.path.join(os.path.dirname(__file__), 'downloads')
+os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+
 app = Flask(__name__)
 
 class ClearReconScraper:
     def __init__(self):
-        self.driver = None
-        self.counties = []
+        pass
         
-    def setup_driver(self):
-        """Setup Chrome driver with human-like options"""
-        chrome_options = Options()
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--disable-dev-shm-usage')
-        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
-        
-        service = Service(ChromeDriverManager().install())
-        self.driver = webdriver.Chrome(service=service, options=chrome_options)
-        
-        # Remove webdriver property to avoid detection
-        self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-        
-        return self.driver
+    # Playwright does not require manual driver setup. All browser/page setup will be handled in each method.
     
-    def human_type(self, element, text, delay=0.1):
-        """Type text character by character to mimic human typing"""
-        element.clear()
-        for char in text:
-            element.send_keys(char)
-            time.sleep(delay)
+    # Playwright's .fill() and .type() handle input natively; no need for a separate human_type method.
     
-    def get_counties(self):
-        """Extract available counties from the website"""
+    async def get_cities_async(self):
+        """Extract available cities from the website using Playwright async API"""
         try:
-            self.setup_driver()
-            print("Navigating to ClearRecon...")
-            
-            # Navigate to the disclaimer page
-            self.driver.get('https://clearrecon-ca.com/california-listings/')
-            
-            # Wait for page to load and accept terms
-            WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.LINK_TEXT, "Agree"))
-            )
-            
-            # Click agree with human-like delay
-            time.sleep(2)
-            agree_button = self.driver.find_element(By.LINK_TEXT, "Agree")
-            agree_button.click()
-            
-            # Wait for listings page to load
-            time.sleep(3)
-            
-            # Look for county/city filters or dropdowns
-            county_elements = []
-            
-            # Try to find county/location filters
-            try:
+            from playwright.async_api import async_playwright
+            city_elements = []
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
+                await page.goto('https://clearrecon-ca.com/california-listings/', timeout=60000)
+
+                # Accept terms if present
+                try:
+                    agree = await page.query_selector("text=Agree")
+                    if agree:
+                        await agree.click()
+                        await page.wait_for_timeout(2000)
+                except Exception:
+                    pass
+                await page.wait_for_timeout(3000)
+
                 # Look for select elements that might contain counties
-                selects = self.driver.find_elements(By.TAG_NAME, "select")
+                selects = await page.query_selector_all('select')
                 for select in selects:
-                    options = select.find_elements(By.TAG_NAME, "option")
+                    options = await select.query_selector_all('option')
                     for option in options:
-                        text = option.text.strip()
-                        if text and len(text) > 2:  # Filter out empty or very short options
-                            county_elements.append(text)
-                
+                        text = (await option.inner_text()).strip()
+                        if text and len(text) > 2 and 'city' in text.lower():
+                            city_elements.append(text)
+
                 # Look for links or buttons that might represent counties
-                links = self.driver.find_elements(By.TAG_NAME, "a")
+                links = await page.query_selector_all('a')
                 for link in links:
-                    text = link.text.strip()
-                    if any(keyword in text.lower() for keyword in ['county', 'sacramento', 'los angeles', 'san francisco', 'orange']):
-                        county_elements.append(text)
-                
-            except Exception as e:
-                print(f"Error finding county elements: {e}")
-            
-            # Default counties if we can't extract them
-            if not county_elements:
-                county_elements = [
-                    'Sacramento County',
-                    'Los Angeles County', 
-                    'Orange County',
-                    'San Francisco County',
-                    'San Diego County',
-                    'Alameda County',
-                    'Santa Clara County',
-                    'Riverside County',
-                    'San Bernardino County',
-                    'Contra Costa County'
+                    text = (await link.inner_text()).strip()
+                    # Try to pick out city names from links, e.g. 'Sacramento', 'Los Angeles', etc.
+                    if any(city in text for city in ['Sacramento', 'Los Angeles', 'San Francisco', 'San Diego', 'Oakland', 'Fresno', 'Long Beach', 'Santa Ana', 'Anaheim', 'Riverside', 'Stockton', 'Bakersfield', 'Fremont', 'San Jose', 'Modesto', 'Fontana', 'Oxnard', 'Moreno Valley', 'Huntington Beach', 'Glendale', 'Santa Clarita', 'Garden Grove', 'Oceanside', 'Rancho Cucamonga', 'Ontario', 'Corona', 'Elk Grove', 'Palmdale', 'Salinas', 'Pomona', 'Hayward', 'Escondido', 'Torrance', 'Sunnyvale', 'Orange', 'Fullerton', 'Pasadena', 'Thousand Oaks', 'Visalia', 'Simi Valley', 'Concord', 'Roseville', 'Victorville', 'Santa Rosa', 'Vallejo', 'Berkeley', 'El Monte', 'Downey', 'Costa Mesa', 'Inglewood']):
+                        city_elements.append(text)
+                await browser.close()
+
+            if not city_elements:
+                city_elements = [
+                    'Sacramento', 'Los Angeles', 'San Francisco', 'San Diego', 'Oakland',
+                    'Fresno', 'Long Beach', 'Santa Ana', 'Anaheim', 'Riverside',
+                    'Stockton', 'Bakersfield', 'Fremont', 'San Jose', 'Modesto',
+                    'Fontana', 'Oxnard', 'Moreno Valley', 'Huntington Beach', 'Glendale',
+                    'Santa Clarita', 'Garden Grove', 'Oceanside', 'Rancho Cucamonga',
+                    'Ontario', 'Corona', 'Elk Grove', 'Palmdale', 'Salinas', 'Pomona',
+                    'Hayward', 'Escondido', 'Torrance', 'Sunnyvale', 'Orange',
+                    'Fullerton', 'Pasadena', 'Thousand Oaks', 'Visalia', 'Simi Valley',
+                    'Concord', 'Roseville', 'Victorville', 'Santa Rosa', 'Vallejo',
+                    'Berkeley', 'El Monte', 'Downey', 'Costa Mesa', 'Inglewood'
                 ]
-            
-            self.counties = sorted(list(set(county_elements)))
-            print(f"Found {len(self.counties)} counties")
-            
-            return self.counties
-            
+            print(f"Found {len(set(city_elements))} cities")
+            return sorted(list(set(city_elements)))
         except Exception as e:
-            print(f"Error getting counties: {e}")
-            # Return default counties
+            print(f"Error getting cities: {e}")
             return [
-                'Sacramento County',
-                'Los Angeles County', 
-                'Orange County',
-                'San Francisco County',
-                'San Diego County',
-                'Alameda County',
-                'Santa Clara County',
-                'Riverside County',
-                'San Bernardino County',
-                'Contra Costa County'
+                'Sacramento', 'Los Angeles', 'San Francisco', 'San Diego', 'Oakland',
+                'Fresno', 'Long Beach', 'Santa Ana', 'Anaheim', 'Riverside',
+                'Stockton', 'Bakersfield', 'Fremont', 'San Jose', 'Modesto',
+                'Fontana', 'Oxnard', 'Moreno Valley', 'Huntington Beach', 'Glendale',
+                'Santa Clarita', 'Garden Grove', 'Oceanside', 'Rancho Cucamonga',
+                'Ontario', 'Corona', 'Elk Grove', 'Palmdale', 'Salinas', 'Pomona',
+                'Hayward', 'Escondido', 'Torrance', 'Sunnyvale', 'Orange',
+                'Fullerton', 'Pasadena', 'Thousand Oaks', 'Visalia', 'Simi Valley',
+                'Concord', 'Roseville', 'Victorville', 'Santa Rosa', 'Vallejo',
+                'Berkeley', 'El Monte', 'Downey', 'Costa Mesa', 'Inglewood'
             ]
-        finally:
-            if self.driver:
-                self.driver.quit()
+
     
-    def scrape_listings(self, city, start_date, end_date, progress_callback=None):
-        """Scrape listings with improved navigation and multiple strategies"""
+    async def scrape_listings_async(self, city, start_date, end_date, progress_callback=None):
+        """Scrape listings with improved navigation and multiple strategies using Playwright async API"""
         try:
-            # First try to setup driver for real scraping
-            try:
-                self.setup_driver()
-                listings = []
-            except Exception as driver_error:
-                print(f"ChromeDriver error: {driver_error}")
-                if progress_callback:
-                    progress_callback("ChromeDriver unavailable, using mock data for demonstration...")
-                # Use mock data as fallback
-                from mock_data_generator import generate_mock_trustee_sales
-                mock_listings = generate_mock_trustee_sales(city, 15)
-                filtered_mock = self.filter_listings(mock_listings, city, start_date, end_date)
-                if progress_callback:
-                    progress_callback(f"Generated {len(mock_listings)} mock listings, {len(filtered_mock)} match criteria")
-                return filtered_mock
-            
-            if progress_callback:
-                progress_callback("Navigating to ClearRecon...")
-            
-            # Strategy 1: Try multiple entry points
+            from playwright.async_api import async_playwright
             entry_urls = [
                 'https://clearrecon-ca.com/california-listings/',
                 'https://clearrecon-ca.com/listings/',
@@ -170,66 +112,74 @@ class ClearReconScraper:
                 'https://clearrecon-ca.com/trustee-sales/',
                 'https://clearrecon-ca.com/'
             ]
-            
-            for url in entry_urls:
-                try:
-                    if progress_callback:
-                        progress_callback(f"Trying {url}...")
-                    
-                    self.driver.get(url)
-                    time.sleep(3)
-                    
-                    # Check if we need to accept terms
+            listings = []
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
+                for url in entry_urls:
                     try:
-                        agree_link = WebDriverWait(self.driver, 5).until(
-                            EC.element_to_be_clickable((By.LINK_TEXT, "Agree"))
-                        )
-                        time.sleep(2)
-                        agree_link.click()
-                        time.sleep(3)
                         if progress_callback:
-                            progress_callback("Terms accepted...")
-                    except:
-                        pass  # No terms to accept
-                    
-                    # Look for search forms
-                    search_forms = self.driver.find_elements(By.TAG_NAME, "form")
-                    
-                    for form in search_forms:
+                            progress_callback(f"Trying {url}...")
+                        await page.goto(url, timeout=60000)
+                        await page.wait_for_timeout(3000)
+                        # Accept terms if present
                         try:
-                            # Check if this form looks like a search form
-                            form_text = form.text.lower()
+                            agree = await page.query_selector("text=Agree")
+                            if agree:
+                                await agree.click()
+                                await page.wait_for_timeout(2000)
+                                if progress_callback:
+                                    progress_callback("Terms accepted...")
+                        except Exception:
+                            pass
+                        # Try to find a form and fill it out
+                        forms = await page.query_selector_all('form')
+                        for form in forms:
+                            form_text = (await form.inner_text()).lower()
                             if any(keyword in form_text for keyword in ['search', 'county', 'date', 'filter']):
                                 if progress_callback:
                                     progress_callback("Found search form, filling it out...")
-                                
-                                # Fill out county field
-                                county_inputs = form.find_elements(By.XPATH, ".//input[contains(@name, 'county') or contains(@placeholder, 'county')] | .//select[contains(@name, 'county')]")
+                                # Fill county/city
+                                county_inputs = await form.query_selector_all("input[name*='county'], input[placeholder*='county'], select[name*='county']")
                                 for county_input in county_inputs:
-                                    if county_input.tag_name == 'select':
-                                        select = Select(county_input)
-                                        options = [opt.text for opt in select.options]
-                                        sacramento_option = next((opt for opt in options if 'sacramento' in opt.lower()), None)
-                                        if sacramento_option:
-                                            select.select_by_visible_text(sacramento_option)
+                                    tag = await county_input.get_property('tagName')
+                                    tag = (await tag.json_value()).lower()
+                                    if tag == 'select':
+                                        options = await county_input.query_selector_all('option')
+                                        for option in options:
+                                            option_text = (await option.inner_text()).lower()
+                                            if 'sacramento' in option_text:
+                                                await county_input.select_option(label=option_text)
                                     else:
-                                        county_input.clear()
-                                        self.human_type(county_input, county)
-                                
-                                # Fill out date fields
-                                date_inputs = form.find_elements(By.XPATH, ".//input[contains(@type, 'date') or contains(@name, 'date')]")
+                                        await county_input.fill(city)
+                                # Fill dates
+                                date_inputs = await form.query_selector_all("input[type='date'], input[name*='date']")
                                 for date_input in date_inputs:
-                                    if 'start' in date_input.get_attribute('name').lower() or 'from' in date_input.get_attribute('name').lower():
-                                        date_input.clear()
-                                        self.human_type(date_input, start_date)
-                                    elif 'end' in date_input.get_attribute('name').lower() or 'to' in date_input.get_attribute('name').lower():
-                                        date_input.clear()
-                                        self.human_type(date_input, end_date)
-                                
-                                # Submit the form
-                                submit_button = form.find_element(By.XPATH, ".//input[@type='submit'] | .//button[@type='submit'] | .//button[contains(text(), 'Search')]")
-                                time.sleep(1)
-                                submit_button.click()
+                                    name = (await date_input.get_attribute('name') or '').lower()
+                                    if 'start' in name or 'from' in name:
+                                        await date_input.fill(start_date)
+                                    elif 'end' in name or 'to' in name:
+                                        await date_input.fill(end_date)
+                                # Submit form
+                                submit_btn = await form.query_selector("input[type='submit'], button[type='submit'], button:has-text('Search')")
+                                if submit_btn:
+                                    await submit_btn.click()
+                                    await page.wait_for_timeout(3000)
+                        # Extract listings from the page
+                        html = await page.content()
+                        soup = BeautifulSoup(html, 'html.parser')
+                        # Use the same logic as extract_listings_from_page_async
+                        listings = self.extract_listings_from_html(soup)
+                        if listings:
+                            break
+                    except Exception as e:
+                        print(f"Error scraping {url}: {e}")
+                await browser.close()
+            return listings
+        except Exception as e:
+            print(f"Error scraping listings: {e}")
+            return []
+                     submit_button.click()
                                 time.sleep(5)
                                 
                                 if progress_callback:
@@ -348,93 +298,65 @@ class ClearReconScraper:
                 progress_callback(f"Error occurred: {str(e)}")
             return []
     
-    def extract_listings_from_page(self):
-        """Extract listings from current page using multiple strategies"""
+    def extract_listings_from_html(self, soup):
+        """Extract listings from a BeautifulSoup HTML soup object using table/container/text strategies."""
         listings = []
-        
         try:
             # Strategy 1: Look for tables
-            tables = self.driver.find_elements(By.TAG_NAME, "table")
+            tables = soup.find_all('table')
             for table in tables:
-                rows = table.find_elements(By.TAG_NAME, "tr")
-                if len(rows) > 1:  # Has headers and data
+                rows = table.find_all('tr')
+                if len(rows) > 1:
                     try:
-                        headers = [th.text.strip().lower() for th in rows[0].find_elements(By.XPATH, ".//th | .//td")]
-                        
-                        # Check if this looks like a property table
+                        headers = [th.get_text(strip=True).lower() for th in rows[0].find_all(['th', 'td'])]
                         if any(keyword in ' '.join(headers) for keyword in ['address', 'date', 'amount', 'property', 'sale']):
                             for row in rows[1:]:
-                                cols = row.find_elements(By.XPATH, ".//td | .//th")
+                                cols = row.find_all(['td', 'th'])
                                 if len(cols) >= 2:
                                     row_data = {'source': 'table'}
                                     for i, col in enumerate(cols):
-                                        col_text = col.text.strip()
+                                        col_text = col.get_text(strip=True)
                                         if col_text and i < len(headers) and headers[i]:
                                             row_data[headers[i].replace(' ', '_')] = col_text
-                                    
                                     if len([v for v in row_data.values() if v and len(str(v)) > 3]) >= 2:
                                         listings.append(row_data)
                     except Exception as e:
                         print(f"Error processing table: {e}")
-            
             # Strategy 2: Look for structured divs/containers
-            containers = self.driver.find_elements(By.XPATH, "//div[contains(@class, 'property') or contains(@class, 'listing') or contains(@class, 'item') or contains(@class, 'result')]")
-            
+            containers = soup.select("div.property, div.listing, div.item, div.result")
             for container in containers:
                 try:
-                    text_content = container.text.strip()
-                    if len(text_content) > 50:  # Substantial content
+                    text_content = container.get_text(strip=True)
+                    if len(text_content) > 50:
                         listing_data = {
                             'source': 'container',
                             'raw_text': text_content
                         }
-                        
-                        # Try to extract structured data
                         if re.search(r'\d+\s+[A-Za-z\s]+(?:St|Street|Ave|Avenue|Rd|Road|Dr|Drive|Blvd|Boulevard|Way|Ct|Court)', text_content):
                             listing_data['has_address'] = True
-                        
                         if re.search(r'\$[\d,]+(?:\.\d{2})?', text_content):
                             listing_data['has_amount'] = True
-                        
                         if re.search(r'\d{1,2}/\d{1,2}/\d{4}', text_content):
                             listing_data['has_date'] = True
-                        
-                        # Only add if it has at least 2 property indicators
-                        indicators = sum([listing_data.get('has_address', False), 
-                                        listing_data.get('has_amount', False), 
-                                        listing_data.get('has_date', False)])
-                        
+                        indicators = sum([listing_data.get('has_address', False), listing_data.get('has_amount', False), listing_data.get('has_date', False)])
                         if indicators >= 2 or 'sacramento' in text_content.lower():
                             listings.append(listing_data)
-                
                 except Exception as e:
                     print(f"Error processing container: {e}")
-            
             # Strategy 3: Look for any elements with property-related text
-            all_elements = self.driver.find_elements(By.XPATH, "//*[contains(text(), 'Sacramento') or contains(text(), 'trustee') or contains(text(), 'foreclosure') or contains(text(), 'auction')]")
-            
-            for element in all_elements:
+            keywords = ['Sacramento', 'trustee', 'foreclosure', 'auction']
+            for element in soup.find_all(text=lambda t: any(k.lower() in t.lower() for k in keywords)):
                 try:
-                    text = element.text.strip()
-                    if len(text) > 30 and len(text) < 500:  # Reasonable length
-                        # Check if it contains property-like information
-                        if (re.search(r'\d+\s+[A-Za-z\s]+(?:St|Street|Ave|Avenue|Rd|Road)', text) or 
-                            re.search(r'\$[\d,]+', text) or 
-                            'sacramento' in text.lower()):
-                            
-                            listings.append({
-                                'source': 'text_element',
-                                'content': text,
-                                'tag': element.tag_name
-                            })
-                
+                    text = element.strip()
+                    if 30 < len(text) < 500:
+                        if (re.search(r'\d+\s+[A-Za-z\s]+(?:St|Street|Ave|Avenue|Rd|Road)', text) or re.search(r'\$[\d,]+', text) or 'sacramento' in text.lower()):
+                            listings.append({'source': 'text_element', 'content': text})
                 except Exception as e:
                     print(f"Error processing text element: {e}")
-        
         except Exception as e:
-            print(f"Error in extract_listings_from_page: {e}")
-        
+            print(f"Error in extract_listings_from_html: {e}")
         return listings
+
     
     def filter_listings(self, listings, city, start_date, end_date):
         """Filter listings by city (extracted from address) and date range"""
@@ -488,7 +410,7 @@ def index():
 def get_cities():
     """API endpoint to get available cities"""
     try:
-        # Return common California cities where trustee sales occur
+        # Optionally, call Playwright async city extraction here if needed
         cities = [
             'Sacramento', 'Los Angeles', 'San Francisco', 'San Diego', 'Oakland',
             'Fresno', 'Long Beach', 'Santa Ana', 'Anaheim', 'Riverside',

@@ -8,14 +8,48 @@ A Flask web application that automatically searches ClearRecon's California trus
 - 📧 **Email Delivery** - Professional CSV reports sent via Gmail
 - 🌐 **Web Interface** - User-friendly search form
 - 📊 **CSV Export** - Download results directly
-- 🤖 **Human-like Scraping** - Selenium-based automation
+- 🤖 **Human-like Scraping** - Playwright-based automation
 
 ## Setup
 
-1. Clone this repository
-2. Install dependencies: `pip install -r requirements.txt`
+1. Clone the repository and install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+2. Install Playwright browsers:
+
+```bash
+python -m playwright install
+```
+
 3. Copy `.env.example` to `.env` and configure your Gmail credentials
 4. Run: `python app.py`
+
+## Deploying to Azure
+
+### For Azure Web App for Linux (Recommended)
+- Use Gunicorn as the production server for better performance.
+- Set your Procfile to:
+
+```
+web: python -m playwright install && gunicorn app:app --bind=0.0.0.0:$PORT
+```
+
+### For Azure Web App for Windows
+- Use Flask's built-in server (less recommended for production).
+- Set your Procfile to:
+
+```
+web: python -m playwright install && python app.py
+```
+
+### Environment Variables
+- Set all sensitive info (email credentials, SMTP, etc.) using Azure App Service configuration, not a .env file in production.
+
+### File Storage
+- The app creates a `downloads` directory at runtime for CSV exports. Be aware that Azure App Service file storage is ephemeral and may not persist between deployments. Download files promptly after generation.
 
 ## Environment Variables
 
