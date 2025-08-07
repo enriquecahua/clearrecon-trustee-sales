@@ -24,6 +24,32 @@ os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 app = Flask(__name__)
 
+@app.route('/test_playwright')
+def test_playwright():
+    import asyncio
+    import sys
+    from playwright.async_api import async_playwright
+
+    async def run():
+        print('Launching Playwright browser...', file=sys.stdout, flush=True)
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                print('Browser launched.', file=sys.stdout, flush=True)
+                page = await browser.new_page()
+                await page.goto('https://example.com', timeout=60000)
+                print('Navigated to example.com', file=sys.stdout, flush=True)
+                title = await page.title()
+                await browser.close()
+                print(f'Page title: {title}', file=sys.stdout, flush=True)
+                return title
+        except Exception as e:
+            print(f'Playwright error: {e}', file=sys.stdout, flush=True)
+            return f'Error: {e}'
+
+    title = asyncio.run(run())
+    return f"Page title: {title}"
+
 class ClearReconScraper:
     def __init__(self):
         pass
@@ -179,125 +205,7 @@ class ClearReconScraper:
         except Exception as e:
             print(f"Error scraping listings: {e}")
             return []
-                     submit_button.click()
-                                time.sleep(5)
-                                
-                                if progress_callback:
-                                    progress_callback("Form submitted, extracting results...")
-                                
-                                # Extract listings from results
-                                form_listings = self.extract_listings_from_page()
-                                if form_listings:
-                                    listings.extend(form_listings)
-                                    if progress_callback:
-                                        progress_callback(f"Found {len(form_listings)} listings from form")
-                        
-                        except Exception as e:
-                            print(f"Error with form: {e}")
-                            continue
-                    
-                    # Also try to extract listings directly from current page
-                    direct_listings = self.extract_listings_from_page()
-                    if direct_listings:
-                        listings.extend(direct_listings)
-                        if progress_callback:
-                            progress_callback(f"Found {len(direct_listings)} listings directly")
-                    
-                    # If we found listings, break out of the URL loop
-                    if listings:
-                        break
-                        
-                except Exception as e:
-                    print(f"Error with URL {url}: {e}")
-                    continue
-            
-            # Strategy 2: Try JavaScript execution to load dynamic content
-            if not listings:
-                if progress_callback:
-                    progress_callback("Trying JavaScript execution for dynamic content...")
-                
-                try:
-                    # Execute JavaScript to trigger any dynamic loading
-                    self.driver.execute_script("""
-                        // Try to trigger any AJAX calls or dynamic loading
-                        if (typeof jQuery !== 'undefined') {
-                            jQuery(document).trigger('ready');
-                        }
-                        
-                        // Scroll to trigger lazy loading
-                        window.scrollTo(0, document.body.scrollHeight);
-                        
-                        // Click any "Load More" or "Show All" buttons
-                        var loadButtons = document.querySelectorAll('button, a');
-                        for (var i = 0; i < loadButtons.length; i++) {
-                            var text = loadButtons[i].textContent.toLowerCase();
-                            if (text.includes('load') || text.includes('show') || text.includes('more') || text.includes('all')) {
-                                loadButtons[i].click();
-                                break;
-                            }
-                        }
-                    """)
-                    
-                    time.sleep(5)  # Wait for dynamic content to load
-                    
-                    js_listings = self.extract_listings_from_page()
-                    if js_listings:
-                        listings.extend(js_listings)
-                        if progress_callback:
-                            progress_callback(f"Found {len(js_listings)} listings via JavaScript")
-                
-                except Exception as e:
-                    print(f"Error with JavaScript execution: {e}")
-            
-            # Strategy 3: Try searching for specific terms
-            if not listings:
-                if progress_callback:
-                    progress_callback("Trying search functionality...")
-                
-                search_terms = [f"{county} trustee sale", f"{county} foreclosure", "sacramento auction"]
-                
-                for term in search_terms:
-                    try:
-                        # Look for search input
-                        search_inputs = self.driver.find_elements(By.XPATH, "//input[@type='search'] | //input[@name='s'] | //input[@placeholder*='search']")
-                        
-                        for search_input in search_inputs:
-                            search_input.clear()
-                            self.human_type(search_input, term)
-                            search_input.send_keys(Keys.RETURN)
-                            time.sleep(3)
-                            
-                            search_listings = self.extract_listings_from_page()
-                            if search_listings:
-                                listings.extend(search_listings)
-                                if progress_callback:
-                                    progress_callback(f"Found {len(search_listings)} listings from search: {term}")
-                                break
-                        
-                        if listings:
-                            break
-                            
-                    except Exception as e:
-                        print(f"Error with search term {term}: {e}")
-                        continue
-            
-            if progress_callback:
-                progress_callback(f"Scraping complete. Found {len(listings)} total listings.")
-            
-            # Filter by county and date range
-            filtered_listings = self.filter_listings(listings, county, start_date, end_date)
-            
-            if progress_callback:
-                progress_callback(f"After filtering: {len(filtered_listings)} listings match criteria.")
-            
-            return filtered_listings
-            
-        except Exception as e:
-            print(f"Error in scrape_listings: {e}")
-            if progress_callback:
-                progress_callback(f"Error occurred: {str(e)}")
-            return []
-    
+
     def extract_listings_from_html(self, soup):
         """Extract listings from a BeautifulSoup HTML soup object using table/container/text strategies."""
         listings = []
