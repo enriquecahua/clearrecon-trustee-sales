@@ -26,29 +26,44 @@ app = Flask(__name__)
 
 @app.route('/test_playwright')
 def test_playwright():
-    import asyncio
     import sys
-    from playwright.async_api import async_playwright
-
-    async def run():
-        print('Launching Playwright browser...', file=sys.stdout, flush=True)
-        try:
+    import traceback
+    print("[test_playwright] Endpoint hit.")
+    sys.stdout.flush()
+    try:
+        import asyncio
+        from playwright.async_api import async_playwright
+        print("[test_playwright] Imports successful.")
+        sys.stdout.flush()
+        async def run():
+            print("[test_playwright] Starting Playwright context...")
+            sys.stdout.flush()
             async with async_playwright() as p:
+                print("[test_playwright] Launching browser...")
+                sys.stdout.flush()
                 browser = await p.chromium.launch(headless=True)
-                print('Browser launched.', file=sys.stdout, flush=True)
                 page = await browser.new_page()
+                print("[test_playwright] Navigating to example.com...")
+                sys.stdout.flush()
                 await page.goto('https://example.com', timeout=60000)
-                print('Navigated to example.com', file=sys.stdout, flush=True)
+                print("[test_playwright] Page loaded.")
+                sys.stdout.flush()
                 title = await page.title()
+                print(f"[test_playwright] Page title: {title}")
+                sys.stdout.flush()
                 await browser.close()
-                print(f'Page title: {title}', file=sys.stdout, flush=True)
                 return title
-        except Exception as e:
-            print(f'Playwright error: {e}', file=sys.stdout, flush=True)
-            return f'Error: {e}'
+        title = asyncio.run(run())
+        return f"Page title: {title}"
+    except Exception as e:
+        print("[test_playwright] Exception occurred:")
+        traceback.print_exc()
+        sys.stdout.flush()
+        return f"Playwright test error: {e}"
 
-    title = asyncio.run(run())
-    return f"Page title: {title}"
+@app.route('/ping')
+def ping():
+    return "pong"
 
 class ClearReconScraper:
     def __init__(self):
